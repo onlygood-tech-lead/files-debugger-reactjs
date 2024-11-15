@@ -1,3 +1,9 @@
+import ExcelReaderView from "./components/excel/ExcelReaderView";
+
 export default function App() {
-  return <div>Hello World</div>;
+  return (
+    <div>
+      <ExcelReaderView />
+    </div>
+  );
 }
