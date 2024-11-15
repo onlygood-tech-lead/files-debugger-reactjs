@@ -4,7 +4,10 @@ import { AiOutlineFileExcel, AiOutlineDelete } from "react-icons/ai";
 import * as XLSX from "xlsx";
 import ExcelSheetSelector from "./ExcelSheetSelector";
 import JsonViewer from "../json-viewer/JsonViewer";
-import { handleMergedCells } from "../../excel-utils/ExcelUtilMethods";
+import {
+  handleMergedCells,
+  worksheetToArray,
+} from "../../excel-utils/ExcelUtilMethods";
 import ExcelTable from "./ExcelTable";
 
 export default function ExcelReaderView() {
@@ -35,8 +38,7 @@ export default function ExcelReaderView() {
     // Get the sheet and handle merged cells before converting to JSON
     const sheet = workbookData.Sheets[selectedSheetName];
     const processedSheet = handleMergedCells(sheet); // Process merged cells
-
-    return XLSX.utils.sheet_to_json(processedSheet, { header: 1 }); // Convert to JSON
+    return worksheetToArray(processedSheet);
   }, [workbookData, selectedSheetName]);
 
   const selectedSheet = workbookData
@@ -75,6 +77,12 @@ export default function ExcelReaderView() {
             selectedSheetName={selectedSheetName}
             setSelectedSheet={setSelectedSheetName}
           />
+
+          {/* {selectedSheet && (
+            <pre className="bg-gray-100 p-4 rounded border overflow-auto max-w-full">
+              {JSON.stringify(selectedSheet, null, 2)}
+            </pre>
+          )} */}
 
           {selectedSheetData && (
             <div className="space-y-4">
