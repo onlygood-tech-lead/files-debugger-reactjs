@@ -5,31 +5,39 @@ type ExcelTableProps = {
 };
 
 export default function ExcelTable({ worksheetData }: ExcelTableProps) {
-  const sheet = worksheetData;
-  const data: any[][] = XLSX.utils.sheet_to_json(sheet, {
+  // Convert worksheet data to a 2D array for easier manipulation
+  const data: any[][] = XLSX.utils.sheet_to_json(worksheetData, {
     header: 1,
     defval: "",
   });
 
-  // Retrieve the merged cell ranges from the worksheet
-  const merges = sheet["!merges"] || [];
+  // Retrieve merged cell information from the worksheet
+  const merges = worksheetData["!merges"] || [];
 
-  // Create a map to handle merged cell spans (rowSpan and colSpan)
-  const mergeMap: Record<string, { rowSpan: number; colSpan: number }> = {};
+  // Map to store merged cells with appropriate rowSpan and colSpan
+  const mergeMap: Record<
+    string,
+    { rowSpan: number; colSpan: number; value: any }
+  > = {};
 
+  // Populate the mergeMap with rowSpan, colSpan, and top-left cell value for merged ranges
   merges.forEach((merge) => {
     const startCell = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const rowSpan = merge.e.r - merge.s.r + 1;
     const colSpan = merge.e.c - merge.s.c + 1;
-    mergeMap[startCell] = { rowSpan, colSpan };
+    const topLeftValue = worksheetData[startCell]?.v || ""; // Use top-left cell value
 
-    // Fill other cells in the range with null to skip rendering
+    mergeMap[startCell] = { rowSpan, colSpan, value: topLeftValue };
+
+    // Set all cells within the merged range to the top-left value
     for (let R = merge.s.r; R <= merge.e.r; R++) {
-      for (let C = merge.s.c; C <= merge.s.c; C++) {
-        if (!(R === merge.s.r && C === merge.s.c)) {
-          //   const cell = XLSX.utils.encode_cell({ r: R, c: C });
-          data[R][C] = null; // Set cells within the merge range to null
+      for (let C = merge.s.c; C <= merge.e.c; C++) {
+        if (R === merge.s.r && C === merge.s.c) {
+          continue; // Skip the top-left cell as it's already set
         }
+        const cellKey = XLSX.utils.encode_cell({ r: R, c: C });
+        worksheetData[cellKey] = { v: topLeftValue }; // Ensure all merged cells have the same value
+        data[R][C] = null; // Set other cells within the merge range to null to avoid duplicates
       }
     }
   });
@@ -62,13 +70,14 @@ export default function ExcelTable({ worksheetData }: ExcelTableProps) {
                 {rowIndex + 1}
               </td>
               {row.map((cell, colIndex) => {
-                if (cell === null) return null; // Skip cells that are part of a merged range
-
                 const cellKey = XLSX.utils.encode_cell({
                   r: rowIndex,
                   c: colIndex,
                 });
                 const merge = mergeMap[cellKey];
+
+                // If the cell is part of a merged range and not the top-left, skip rendering
+                if (cell === null) return null;
 
                 return (
                   <td
@@ -77,7 +86,7 @@ export default function ExcelTable({ worksheetData }: ExcelTableProps) {
                     rowSpan={merge?.rowSpan || 1}
                     colSpan={merge?.colSpan || 1}
                   >
-                    {cell !== undefined ? cell : ""}
+                    {merge ? merge.value : cell}
                   </td>
                 );
               })}
