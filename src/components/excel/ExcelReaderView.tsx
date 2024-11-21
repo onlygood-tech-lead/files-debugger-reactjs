@@ -11,6 +11,7 @@ import {
 import ExcelTable from "./ExcelTable";
 
 export default function ExcelReaderView() {
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [workbookData, setWorkbookData] = useState<XLSX.WorkBook | null>(null);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
   const [useCustomViewer, setUseCustomViewer] = useState<boolean>(true);
@@ -20,6 +21,7 @@ export default function ExcelReaderView() {
   ) => {
     try {
       const file = event.target.files?.[0] as File;
+      setCurrentFile(file);
       const workbook = await readContentsFromExcelFile(file);
       setWorkbookData(workbook);
     } catch (err) {
@@ -28,6 +30,7 @@ export default function ExcelReaderView() {
   };
 
   const handleReset = () => {
+    setCurrentFile(null);
     setWorkbookData(null);
     setSelectedSheetName("");
   };
@@ -70,9 +73,10 @@ export default function ExcelReaderView() {
         )}
       </div>
 
-      {workbookData && (
+      {workbookData && currentFile && (
         <div className="space-y-12">
           <ExcelSheetSelector
+            currentFile={currentFile}
             sheetNames={workbookData.SheetNames}
             selectedSheetName={selectedSheetName}
             setSelectedSheet={setSelectedSheetName}
