@@ -166,34 +166,39 @@ class IotAnalyticsMetalmanParser {
   }
 
   /**
-   * Get all unique sensor names from the parsed data.
-   * @returns An array of unique sensor names.
+   * Get all unique sensor names for a specific plant from the parsed data.
+   * @param plantName The name of the plant to filter sensors for.
+   * @returns An array of unique sensor names for the given plant.
    */
-  public getUniqueSensorNames(): string[] {
+  public getUniqueSensorNamesForPlant(plantName: string): string[] {
     const sensorNames = new Set(
-      this.parsedData.map((point) => point.sensorName),
+      this.parsedData
+        .filter((point) => point.plant === plantName)
+        .map((point) => point.sensorName),
     );
     return Array.from(sensorNames);
   }
 
   /**
-   * Get the latest consumed value for a given sensor name.
+   * Get the latest consumed value for a given sensor name in a specific plant.
+   * @param plantName The name of the plant to look up.
    * @param sensorName The name of the sensor to look up.
-   * @returns The latest consumed value, date, and hour range for the given sensor, or null if not found.
+   * @returns The latest consumed value, date, and hour range for the given sensor in the specified plant, or null if not found.
    */
   public getLatestConsumedValueForSensor(
+    plantName: string,
     sensorName: string,
   ): { value: number; date: Date; hourRange: string } | null {
     const sensorData = this.parsedData.filter(
-      (point) => point.sensorName === sensorName,
+      (point) => point.plant === plantName && point.sensorName === sensorName,
     );
+
     if (sensorData.length === 0) {
       return null;
     }
 
     // Assuming the dataset is already sorted by date and time in descending order
     const latestData = sensorData[sensorData.length - 1];
-
     return {
       value: latestData.consumedKW,
       date: latestData.date,
