@@ -1,4 +1,10 @@
+import { WorkBook } from "xlsx";
 import { ExcelDateUtils } from "../excel-utils/ExcelDateUtils";
+import {
+  handleMergedCells,
+  worksheetToArray,
+} from "../excel-utils/ExcelUtilMethods";
+import { matchNormalizedPhrase } from "../utils/general.helpers";
 
 // Define the structure for a single data point
 export type IotDataPoint = {
@@ -31,6 +37,24 @@ class ParseError extends Error {
 
 class IotAnalyticsMetalmanParser {
   private parsedData: IotDataPoint[] = [];
+  private readonly MAIN_WORKSHEET_NAME: string = "Master_Data";
+
+  // method to parse worksheet name from array
+  public parseMasterSheetFromWorkbook(workbook: WorkBook): any[][] {
+    // determine whether worksheet is found
+    const matchedSheetName = matchNormalizedPhrase(
+      this.MAIN_WORKSHEET_NAME,
+      workbook.SheetNames,
+    )!;
+    if (!workbook.SheetNames.includes(matchedSheetName)) {
+      throw new Error(
+        `Unable to find ${matchedSheetName} worksheet in workbook`,
+      );
+    }
+    // parse this worksheet
+    const processedSheet = handleMergedCells(workbook.Sheets[matchedSheetName]);
+    return worksheetToArray(processedSheet);
+  }
 
   // Main public method to parse the entire dataset
   public parseDataset(rawData: any[][]): {
@@ -54,7 +78,7 @@ class IotAnalyticsMetalmanParser {
       }
     });
 
-    this.parsedData = result;
+    this.parsedData.push(...result);
     return errors.length > 0 ? { result, errors } : { result };
   }
 
@@ -130,6 +154,15 @@ class IotAnalyticsMetalmanParser {
       sensorName: sensorName.trim(),
       consumedKW: parsedConsumedKW,
     };
+  }
+
+  /**
+   * Get all unique plant names from the parsed data.
+   * @returns An array of unique plant names.
+   */
+  public getUniquePlantNames(): string[] {
+    const plantNames = new Set(this.parsedData.map((point) => point.plant));
+    return Array.from(plantNames);
   }
 
   /**
