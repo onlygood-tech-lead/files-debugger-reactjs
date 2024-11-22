@@ -35,9 +35,155 @@ class ParseError extends Error {
   }
 }
 
+class IotDataQuery {
+  private filters: {
+    plant?: string;
+    sensorName?: string;
+    startDate?: Date;
+    endDate?: Date;
+  } = {};
+
+  /**
+   * Creates an instance of IotDataQuery.
+   * @param data An array of IotDataPoint objects to query.
+   */
+  constructor(private data: IotDataPoint[]) {}
+
+  /**
+   * Filters the data for a specific plant.
+   * @param plantName The name of the plant to filter for.
+   * @returns The IotDataQuery instance for method chaining.
+   */
+  public forPlant(plantName: string): IotDataQuery {
+    this.filters.plant = plantName;
+    return this;
+  }
+
+  /**
+   * Filters the data for a specific plant and sensor.
+   * @param plantName The name of the plant to filter for.
+   * @param sensorName The name of the sensor to filter for.
+   * @returns The IotDataQuery instance for method chaining.
+   */
+  public forSensor(plantName: string, sensorName: string): IotDataQuery {
+    this.filters.plant = plantName;
+    this.filters.sensorName = sensorName;
+    return this;
+  }
+
+  /**
+   * Filters the data for a specific date range.
+   * @param startDate The start date of the range.
+   * @param endDate The end date of the range.
+   * @returns The IotDataQuery instance for method chaining.
+   */
+  public between(startDate: Date, endDate: Date): IotDataQuery {
+    this.filters.startDate = startDate;
+    this.filters.endDate = endDate;
+    return this;
+  }
+
+  /**
+   * Calculates the sum of consumedKW values for the filtered data.
+   * @returns The total sum of consumedKW values.
+   */
+  public sumConsumedKW(): number {
+    return this.applyFilters().reduce(
+      (sum, point) => sum + point.consumedKW,
+      0,
+    );
+  }
+
+  /**
+   * Calculates daily sums of consumedKW values for the filtered data.
+   * @returns An array of objects containing the date and summed value for each day.
+   */
+  public dailySums(): { date: string; summedValue: number }[] {
+    const dailySums = new Map<string, number>();
+    this.applyFilters().forEach((point) => {
+      const dateKey = point.date.toISOString().split("T")[0];
+      const currentSum = dailySums.get(dateKey) || 0;
+      dailySums.set(dateKey, currentSum + point.consumedKW);
+    });
+    return Array.from(dailySums.entries()).map(([date, summedValue]) => ({
+      date,
+      summedValue,
+    }));
+  }
+
+  /**
+   * Calculates daily sums of consumedKW values for each sensor in a specific plant.
+   * @param plantName The name of the plant to calculate sums for.
+   * @returns An array of objects containing the date and summed values for each sensor.
+   */
+  public dailySumsBySensor(plantName: string): {
+    date: string;
+    sensorSums: { [sensorName: string]: number };
+  }[] {
+    const dailySums = new Map<string, Map<string, number>>();
+
+    this.applyFilters()
+      .filter((point) => point.plant === plantName)
+      .forEach((point) => {
+        const dateKey = point.date.toISOString().split("T")[0];
+        if (!dailySums.has(dateKey)) {
+          dailySums.set(dateKey, new Map<string, number>());
+        }
+        const sensorSums = dailySums.get(dateKey)!;
+        const currentSum = sensorSums.get(point.sensorName) || 0;
+        sensorSums.set(point.sensorName, currentSum + point.consumedKW);
+      });
+
+    return Array.from(dailySums.entries()).map(([date, sensorSums]) => ({
+      date,
+      sensorSums: Array.from(sensorSums.entries()).reduce(
+        (obj, [sensor, value]) => {
+          obj[sensor] = value;
+          return obj;
+        },
+        {} as { [sensorName: string]: number },
+      ),
+    }));
+  }
+
+  /**
+   * Calculates the sum of consumedKW values for a specific plant and sensor.
+   * @param plantName The name of the plant.
+   * @param sensorName The name of the sensor.
+   * @returns The total sum of consumedKW values for the specified plant and sensor.
+   */
+  public sumConsumedKWForSensor(plantName: string, sensorName: string): number {
+    return this.data
+      .filter(
+        (point) => point.plant === plantName && point.sensorName === sensorName,
+      )
+      .reduce((sum, point) => sum + point.consumedKW, 0);
+  }
+
+  /**
+   * Applies the current filters to the data.
+   * @returns An array of IotDataPoint objects that match the current filters.
+   */
+  public applyFilters(): IotDataPoint[] {
+    return this.data.filter((point) => {
+      return (
+        (!this.filters.plant || point.plant === this.filters.plant) &&
+        (!this.filters.sensorName ||
+          point.sensorName === this.filters.sensorName) &&
+        (!this.filters.startDate || point.date >= this.filters.startDate) &&
+        (!this.filters.endDate || point.date <= this.filters.endDate)
+      );
+    });
+  }
+}
+
 class IotAnalyticsMetalmanParser {
   private parsedData: IotDataPoint[] = [];
   private readonly MAIN_WORKSHEET_NAME: string = "Master_Data";
+
+  public query(): IotDataQuery {
+    return new IotDataQuery(this.parsedData);
+  }
 
   // method to parse worksheet name from array
   public parseMasterSheetFromWorkbook(workbook: WorkBook): any[][] {
@@ -161,8 +307,14 @@ class IotAnalyticsMetalmanParser {
    * @returns An array of unique plant names.
    */
   public getUniquePlantNames(): string[] {
-    const plantNames = new Set(this.parsedData.map((point) => point.plant));
-    return Array.from(plantNames);
+    return Array.from(
+      new Set(
+        this.query()
+          .forPlant("")
+          .applyFilters()
+          .map((point) => point.plant),
+      ),
+    );
   }
 
   /**
@@ -171,12 +323,14 @@ class IotAnalyticsMetalmanParser {
    * @returns An array of unique sensor names for the given plant.
    */
   public getUniqueSensorNamesForPlant(plantName: string): string[] {
-    const sensorNames = new Set(
-      this.parsedData
-        .filter((point) => point.plant === plantName)
-        .map((point) => point.sensorName),
+    return Array.from(
+      new Set(
+        this.query()
+          .forPlant(plantName)
+          .applyFilters()
+          .map((point) => point.sensorName),
+      ),
     );
-    return Array.from(sensorNames);
   }
 
   /**
@@ -189,21 +343,18 @@ class IotAnalyticsMetalmanParser {
     plantName: string,
     sensorName: string,
   ): { value: number; date: Date; hourRange: string } | null {
-    const sensorData = this.parsedData.filter(
-      (point) => point.plant === plantName && point.sensorName === sensorName,
-    );
+    const latestData = this.query()
+      .forSensor(plantName, sensorName)
+      .applyFilters()
+      .sort((a, b) => b.date.getTime() - a.date.getTime())[0];
 
-    if (sensorData.length === 0) {
-      return null;
-    }
-
-    // Assuming the dataset is already sorted by date and time in descending order
-    const latestData = sensorData[sensorData.length - 1];
-    return {
-      value: latestData.consumedKW,
-      date: latestData.date,
-      hourRange: latestData.hourRange,
-    };
+    return latestData
+      ? {
+          value: latestData.consumedKW,
+          date: latestData.date,
+          hourRange: latestData.hourRange,
+        }
+      : null;
   }
 
   /**
